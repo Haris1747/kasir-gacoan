@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block title %}Preview Struk - {{ transaction.id }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    .receipt {
+        max-width: 400px;
+        margin: 0 auto;
+        font-family: 'Courier New', monospace;
+        background: white;
+        color: black;
+        padding: 20px;
+        border: 1px solid #ddd;
+    }
+    .receipt-header {
+        text-align: center;
+        margin-bottom: 20px;
+    }
+    .receipt-item {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 5px;
+    }
+    .receipt-total {
+        border-top: 1px dashed #333;
+        padding-top: 10px;
+        margin-top: 10px;
+    }
+    .receipt-footer {
+        text-align: center;
+        margin-top: 20px;
+        font-size: 12px;
+    }
+    @media print {
+        body * {
+            visibility: hidden;
+        }
+        .receipt, .receipt * {
+            visibility: visible;
+        }
+        .receipt {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+        }
+        .no-print {
+            display: none !important;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="no-print mb-3">
+    <div class="d-flex justify-content-between align-items-center">
+        <h4>
+            <i class="fas fa-receipt me-2"></i>
+            Preview Struk
+        </h4>
+        <div>
+            <button class="btn btn-outline-primary" onclick="window.print()">
+                <i class="fas fa-print me-2"></i>
+                Print
+            </button>
+            <a href="{{ url_for('receipt_pdf', transaction_id=transaction.id) }}" class="btn btn-primary">
+                <i class="fas fa-download me-2"></i>
+                Download PDF
+            </a>
+            <a href="{{ url_for('pos') }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left me-2"></i>
+                Kembali
+            </a>
+        </div>
+    </div>
+    <hr>
+</div>
+
+<div class="receipt">
+    <div class="receipt-header">
+        <h3>KASIR GACOAN</h3>
+        <p>Sistem Point of Sale</p>
+        <hr>
+    </div>
+    
+    <div class="receipt-info">
+        <div class="receipt-item">
+            <span>No. Transaksi:</span>
+            <span>{{ transaction.id }}</span>
+        </div>
+        <div class="receipt-item">
+            <span>Tanggal:</span>
+            <span>{{ transaction.date.strftime('%d/%m/%Y %H:%M') }}</span>
+        </div>
+        <div class="receipt-item">
+            <span>Kasir:</span>
+            <span>{{ transaction.cashier }}</span>
+        </div>
+        <hr>
+    </div>
+    
+    <div class="receipt-items">
+        {% for item in transaction.items %}
+        <div class="receipt-item">
+            <span>{{ item.product_name }}</span>
+        </div>
+        <div class="receipt-item" style="margin-left: 10px; font-size: 12px;">
+            <span>{{ item.quantity }} x {{ format_currency(item.price) }}</span>
+            <span>{{ format_currency(item.subtotal) }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <div class="receipt-total">
+        <div class="receipt-item">
+            <span>Subtotal:</span>
+            <span>{{ format_currency(transaction.subtotal) }}</span>
+        </div>
+        {% if transaction.discount > 0 %}
+        <div class="receipt-item">
+            <span>Diskon:</span>
+            <span>-{{ format_currency(transaction.discount) }}</span>
+        </div>
+        {% endif %}
+        <div class="receipt-item" style="font-weight: bold;">
+            <span>Total:</span>
+            <span>{{ format_currency(transaction.total) }}</span>
+        </div>
+        <div class="receipt-item">
+            <span>Bayar:</span>
+            <span>{{ format_currency(transaction.payment) }}</span>
+        </div>
+        <div class="receipt-item">
+            <span>Kembalian:</span>
+            <span>{{ format_currency(transaction.change) }}</span>
+        </div>
+    </div>
+    
+    <div class="receipt-footer">
+        <hr>
+        <p>Terima kasih atas kunjungan Anda!</p>
+        <p>Selamat menikmati!</p>
+    </div>
+</div>
+{% endblock %}

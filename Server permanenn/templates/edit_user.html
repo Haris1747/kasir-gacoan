@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}Edit User - {{ user.username }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-user-edit me-2"></i>
+                    Edit User
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="username" class="form-label">Username</label>
+                                <input type="text" class="form-control" id="username" name="username" value="{{ user.username }}" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="role" class="form-label">Role</label>
+                                <select class="form-select" id="role" name="role" required>
+                                    <option value="cashier" {% if user.role == 'cashier' %}selected{% endif %}>Kasir</option>
+                                    <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Admin</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="new_password" class="form-label">Password Baru (opsional)</label>
+                        <input type="password" class="form-control" id="new_password" name="new_password" minlength="4">
+                        <div class="form-text">Kosongkan jika tidak ingin mengubah password</div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Status</label>
+                                <div>
+                                    {% if user.is_active %}
+                                    <span class="badge bg-success">Aktif</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">Nonaktif</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Bergabung</label>
+                                <input type="text" class="form-control" value="{{ user.created_at.strftime('%d/%m/%Y %H:%M') if user.created_at else '-' }}" readonly>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="{{ url_for('user_management') }}" class="btn btn-secondary">
+                            <i class="fas fa-times me-2"></i>
+                            Batal
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i>
+                            Simpan Perubahan
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- User Info Card -->
+        <div class="card mt-3">
+            <div class="card-body">
+                <h6 class="card-title">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Informasi User
+                </h6>
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>ID User:</strong> {{ user.id }}</p>
+                        <p><strong>Role Saat Ini:</strong> 
+                            {% if user.role == 'admin' %}
+                            <span class="badge bg-danger">Admin</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Kasir</span>
+                            {% endif %}
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Status Login:</strong>
+                            {% if user.username == session.username %}
+                            <span class="badge bg-info">Sedang Login</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Tidak Login</span>
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+                
+                {% if user.username == session.username %}
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Anda sedang mengedit akun sendiri. Hati-hati dalam mengubah role atau username.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

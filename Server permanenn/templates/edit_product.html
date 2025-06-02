@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Produk - {{ product.name }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-edit me-2"></i>
+                    Edit Produk
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="mb-3">
+                                <label for="name" class="form-label">Nama Produk</label>
+                                <input type="text" class="form-control" id="name" name="name" value="{{ product.name }}" required>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="category" class="form-label">Kategori</label>
+                                <select class="form-select" id="category" name="category" required>
+                                    {% for cat in categories %}
+                                    <option value="{{ cat }}" {% if cat == product.category %}selected{% endif %}>
+                                        {{ cat.title() }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="price" class="form-label">Harga</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">Rp</span>
+                                    <input type="number" class="form-control" id="price" name="price" 
+                                           value="{{ product.price }}" step="100" min="0" required>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="stock" class="form-label">Stok</label>
+                                <input type="number" class="form-control" id="stock" name="stock" 
+                                       value="{{ product.stock }}" min="0" required>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Dibuat</label>
+                                <input type="text" class="form-control" value="{{ product.created_at.strftime('%d/%m/%Y %H:%M') if product.created_at else '-' }}" readonly>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Terakhir Diubah</label>
+                                <input type="text" class="form-control" value="{{ product.updated_at.strftime('%d/%m/%Y %H:%M') if product.updated_at else '-' }}" readonly>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="{{ url_for('inventory') }}" class="btn btn-secondary">
+                            <i class="fas fa-times me-2"></i>
+                            Batal
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i>
+                            Simpan Perubahan
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Product Info Card -->
+        <div class="card mt-3">
+            <div class="card-body">
+                <h6 class="card-title">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Informasi Produk
+                </h6>
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>Status Stok:</strong>
+                            {% if product.stock <= 0 %}
+                            <span class="badge bg-danger">Habis</span>
+                            {% elif product.stock <= 10 %}
+                            <span class="badge bg-warning">Stok Rendah</span>
+                            {% else %}
+                            <span class="badge bg-success">Tersedia</span>
+                            {% endif %}
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>ID Produk:</strong> {{ product.id }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

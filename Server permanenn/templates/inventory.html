@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+
+{% block title %}Inventori - Kasir Gacoan{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h4>
+            <i class="fas fa-boxes me-2"></i>
+            Manajemen Inventori
+        </h4>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addProductModal">
+            <i class="fas fa-plus me-2"></i>
+            Tambah Produk
+        </button>
+    </div>
+</div>
+
+<!-- Low Stock Alert -->
+{% if low_stock %}
+<div class="alert alert-warning">
+    <i class="fas fa-exclamation-triangle me-2"></i>
+    <strong>Peringatan Stok Rendah:</strong>
+    {% for product in low_stock %}
+        {{ product.name }} ({{ product.stock }}){% if not loop.last %}, {% endif %}
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Products Table -->
+<div class="card">
+    <div class="card-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Daftar Produk</h5>
+            <div class="btn-group" role="group">
+                <input type="radio" class="btn-check" name="filter-category" id="filter-all" value="all" checked>
+                <label class="btn btn-outline-secondary" for="filter-all">Semua</label>
+                
+                <input type="radio" class="btn-check" name="filter-category" id="filter-makanan" value="makanan">
+                <label class="btn btn-outline-secondary" for="filter-makanan">Makanan</label>
+                
+                <input type="radio" class="btn-check" name="filter-category" id="filter-snack" value="snack">
+                <label class="btn btn-outline-secondary" for="filter-snack">Snack</label>
+                
+                <input type="radio" class="btn-check" name="filter-category" id="filter-minuman" value="minuman">
+                <label class="btn btn-outline-secondary" for="filter-minuman">Minuman</label>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if products %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Nama Produk</th>
+                        <th>Kategori</th>
+                        <th>Harga</th>
+                        <th>Stok</th>
+                        <th>Status</th>
+                        <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody id="products-table-body">
+                    {% for product in products %}
+                    <tr data-category="{{ product.category }}">
+                        <td>{{ product.name }}</td>
+                        <td>
+                            <span class="badge bg-secondary">{{ product.category }}</span>
+                        </td>
+                        <td>{{ format_currency(product.price) }}</td>
+                        <td>
+                            <span class="{% if product.stock <= 0 %}text-danger{% elif product.stock <= 10 %}text-warning{% endif %}">
+                                {{ product.stock }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if product.stock <= 0 %}
+                            <span class="badge bg-danger">Habis</span>
+                            {% elif product.stock <= 10 %}
+                            <span class="badge bg-warning">Stok Rendah</span>
+                            {% else %}
+                            <span class="badge bg-success">Tersedia</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <a href="{{ url_for('edit_product', product_id=product.id) }}" 
+                                   class="btn btn-outline-primary">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                <button class="btn btn-outline-warning" 
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#deleteStockModal"
+                                        data-product-id="{{ product.id }}"
+                                        data-product-name="{{ product.name }}"
+                                        data-product-stock="{{ product.stock }}">
+                                    <i class="fas fa-minus"></i>
+                                </button>
+                                <button class="btn btn-outline-danger" 
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#deleteProductModal"
+                                        data-product-id="{{ product.id }}"
+                                        data-product-name="{{ product.name }}">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <i class="fas fa-boxes fa-3x text-muted mb-3"></i>
+            <h5 class="text-muted">Belum ada produk</h5>
+            <p class="text-muted">Tambahkan produk pertama untuk memulai</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Add Product Modal -->
+<div class="modal fade" id="addProductModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-plus me-2"></i>
+                    Tambah Produk Baru
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('add_product') }}">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Nama Produk</label>
+                        <input type="text" class="form-control" id="name" name="name" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="category" class="form-label">Kategori</label>
+                        <select class="form-select" id="category" name="category" required>
+                            <option value="">Pilih Kategori</option>
+                            {% for cat in categories %}
+                            <option value="{{ cat }}">{{ cat.title() }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="price" class="form-label">Harga</label>
+                                <input type="number" class="form-control" id="price" name="price" step="100" min="0" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="stock" class="form-label">Stok Awal</label>
+                                <input type="number" class="form-control" id="stock" name="stock" min="0" required>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-2"></i>
+                        Simpan
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Stock Modal -->
+<div class="modal fade" id="deleteStockModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-minus me-2"></i>
+                    Hapus Stok
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="deleteStockForm" method="POST">
+                <div class="modal-body">
+                    <p>Hapus stok dari produk: <strong id="deleteStockProductName"></strong></p>
+                    <p>Stok tersedia: <strong id="deleteStockProductStock"></strong></p>
+                    
+                    <div class="mb-3">
+                        <label for="deleteStockQuantity" class="form-label">Jumlah yang akan dihapus</label>
+                        <input type="number" class="form-control" id="deleteStockQuantity" name="quantity" min="1" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="fas fa-minus me-2"></i>
+                        Hapus Stok
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Product Modal -->
+<div class="modal fade" id="deleteProductModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-trash me-2"></i>
+                    Hapus Produk
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="deleteProductForm" method="POST">
+                <div class="modal-body">
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Peringatan!</strong> Aksi ini tidak dapat dibatalkan.
+                    </div>
+                    <p>Apakah Anda yakin ingin menghapus produk: <strong id="deleteProductName"></strong>?</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-trash me-2"></i>
+                        Hapus Produk
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/inventory.js') }}"></script>
+{% endblock %}

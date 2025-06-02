@@ -1,0 +1,580 @@
+#!/usr/bin/env python3
+"""
+KASIR GACOAN - SISTEM POS SEDERHANA
+Enhanced with Receipt Printing Functionality, Database Integration, and User Management
+"""
+import os
+import logging
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, send_file, flash
+import json
+from datetime import datetime
+from receipt_generator import ReceiptGenerator
+from models import db, Product, Transaction, TransactionItem, User
+from sqlalchemy import func
+from werkzeug.security import generate_password_hash, check_password_hash
+from functools import wraps
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+
+app = Flask(__name__)
+app.secret_key = os.environ.get("SESSION_SECRET", "gacoan_pos_secret_key_2024")
+
+# Database configuration
+database_url = os.environ.get("DATABASE_URL")
+if database_url:
+    app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+        "pool_recycle": 300,
+        "pool_pre_ping": True,
+    }
+else:
+    # Fallback for development
+    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///kasir_gacoan.db"
+
+db.init_app(app)
+
+# Stock alerts threshold
+STOCK_ALERT_THRESHOLD = 10
+
+# Initialize database and default data
+def init_database():
+    """Initialize database with tables and default data"""
+    with app.app_context():
+        db.create_all()
+        
+        # Check if users exist, if not create default users
+        if User.query.count() == 0:
+            default_users = [
+                User(username='Haris', password_hash=generate_password_hash('110405'), role='cashier'),
+                User(username='Dhini', password_hash=generate_password_hash('Riantina'), role='cashier'),
+                User(username='Susanto', password_hash=generate_password_hash('Santo'), role='cashier'),
+                User(username='Tribud', password_hash=generate_password_hash('Prasetyo'), role='cashier'),
+                User(username='Adinda', password_hash=generate_password_hash('Putri'), role='admin')
+            ]
+            for user in default_users:
+                db.session.add(user)
+            db.session.commit()
+            logging.info("Default users created")
+        
+        # Check if products exist, if not create default products
+        if Product.query.count() == 0:
+            default_products = [
+                Product(name='Gacoan Level 1', price=10000, stock=100, category='makanan'),
+                Product(name='Gacoan Level 2', price=10000, stock=100, category='makanan'),
+                Product(name='Gacoan Level 3', price=10000, stock=100, category='makanan'),
+                Product(name='Gacoan Level 4', price=10000, stock=100, category='makanan'),
+                Product(name='Gacoan Level 5', price=12000, stock=100, category='makanan'),
+                Product(name='Gacoan Level 6', price=16000, stock=100, category='makanan'),
+                Product(name='Gacoan Level 7', price=17000, stock=100, category='makanan'),
+                Product(name='Gacoan Level 8', price=18000, stock=100, category='makanan'),
+                Product(name='Udang Keju', price=10000, stock=50, category='snack'),
+                Product(name='Udang Rambutan', price=12000, stock=50, category='snack'),
+                Product(name='Lumpia Udang', price=11000, stock=50, category='snack'),
+                Product(name='Dimsum Ayam', price=15000, stock=30, category='snack'),
+                Product(name='Pangsit Goreng', price=13000, stock=40, category='snack'),
+                Product(name='Es Teh Manis', price=5000, stock=100, category='minuman'),
+                Product(name='Es Jeruk', price=6000, stock=100, category='minuman'),
+                Product(name='Kopi Hitam', price=8000, stock=80, category='minuman'),
+                Product(name='Jus Alpukat', price=12000, stock=50, category='minuman')
+            ]
+            for product in default_products:
+                db.session.add(product)
+            db.session.commit()
+            logging.info("Default products created")
+
+def format_currency(amount):
+    """Format currency to Indonesian Rupiah format"""
+    return f"Rp {amount:,}".replace(",", ".")
+
+def generate_transaction_id():
+    """Generate unique transaction ID"""
+    return f"TRX-{int(datetime.now().timestamp())}"
+
+def get_low_stock_products():
+    """Get products with low stock"""
+    return Product.query.filter(Product.stock <= STOCK_ALERT_THRESHOLD).all()
+
+def require_login(f):
+    """Decorator to require login for routes"""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if 'username' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return wrapper
+
+def require_admin(f):
+    """Decorator to require admin role for routes"""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if 'username' not in session:
+            return redirect(url_for('login'))
+        
+        user = User.query.filter_by(username=session['username']).first()
+        if not user or user.role != 'admin':
+            flash('Akses ditolak. Hanya admin yang dapat mengakses halaman ini.', 'error')
+            return redirect(url_for('pos'))
+        return f(*args, **kwargs)
+    return wrapper
+
+@app.route('/')
+def index():
+    """Redirect to POS if logged in, otherwise to login"""
+    if 'username' in session:
+        return redirect(url_for('pos'))
+    return redirect(url_for('login'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Handle user login"""
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        
+        user = User.query.filter_by(username=username, is_active=True).first()
+        if user and check_password_hash(user.password_hash, password):
+            session['username'] = username
+            session['user_id'] = user.id
+            session['user_role'] = user.role
+            session['login_time'] = datetime.now().isoformat()
+            flash('Login berhasil!', 'success')
+            return redirect(url_for('pos'))
+        else:
+            flash('Username atau password salah!', 'error')
+    
+    return render_template('login.html')
+
+@app.route('/logout')
+@require_login
+def logout():
+    """Handle user logout"""
+    session.clear()
+    flash('Logout berhasil!', 'success')
+    return redirect(url_for('login'))
+
+@app.route('/change-password', methods=['GET', 'POST'])
+@require_login
+def change_password():
+    """Handle password change for current user"""
+    if request.method == 'POST':
+        current_password = request.form['current_password']
+        new_password = request.form['new_password']
+        confirm_password = request.form['confirm_password']
+        
+        user = User.query.filter_by(username=session['username']).first()
+        
+        if not check_password_hash(user.password_hash, current_password):
+            flash('Password lama salah!', 'error')
+        elif new_password != confirm_password:
+            flash('Password baru dan konfirmasi password tidak sama!', 'error')
+        elif len(new_password) < 4:
+            flash('Password minimal 4 karakter!', 'error')
+        else:
+            user.password_hash = generate_password_hash(new_password)
+            db.session.commit()
+            flash('Password berhasil diubah!', 'success')
+            return redirect(url_for('pos'))
+    
+    return render_template('change_password.html')
+
+@app.route('/pos')
+@require_login
+def pos():
+    """Main POS interface"""
+    products = Product.query.all()
+    low_stock = get_low_stock_products()
+    return render_template('pos.html', 
+                         products=products, 
+                         format_currency=format_currency,
+                         low_stock=low_stock)
+
+@app.route('/api/products')
+@require_login
+def api_products():
+    """API endpoint to get products"""
+    category = request.args.get('category')
+    if category and category != 'all':
+        products = Product.query.filter_by(category=category).all()
+    else:
+        products = Product.query.all()
+    return jsonify([p.to_dict() for p in products])
+
+@app.route('/api/checkout', methods=['POST'])
+@require_login
+def api_checkout():
+    """Process checkout and create transaction"""
+    try:
+        data = request.get_json()
+        cart_items = data.get('cart_items', [])
+        payment_amount = data.get('payment_amount', 0)
+        
+        if not cart_items:
+            return jsonify({'success': False, 'message': 'Keranjang kosong'}), 400
+        
+        # Calculate totals
+        subtotal = sum(item['price'] * item['quantity'] for item in cart_items)
+        discount = 0
+        if subtotal >= 100000:  # 10% discount for orders >= 100k
+            discount = subtotal * 0.1
+        
+        total = subtotal - discount
+        
+        if payment_amount < total:
+            return jsonify({'success': False, 'message': 'Pembayaran kurang'}), 400
+        
+        change = payment_amount - total
+        
+        # Create transaction
+        transaction = {
+            'id': generate_transaction_id(),
+            'date': datetime.now().isoformat(),
+            'cashier': session['username'],
+            'items': cart_items,
+            'subtotal': subtotal,
+            'discount': discount,
+            'total': total,
+            'payment': payment_amount,
+            'change': change
+        }
+        
+        # Create transaction record
+        new_transaction = Transaction(
+            id=transaction['id'],
+            date=datetime.now(),
+            cashier=session['username'],
+            subtotal=subtotal,
+            discount=discount,
+            total=total,
+            payment=payment_amount,
+            change=change
+        )
+        db.session.add(new_transaction)
+        
+        # Create transaction items and update stock
+        for cart_item in cart_items:
+            # Create transaction item
+            transaction_item = TransactionItem(
+                transaction_id=transaction['id'],
+                product_id=cart_item['id'],
+                product_name=cart_item['name'],
+                price=cart_item['price'],
+                quantity=cart_item['quantity'],
+                subtotal=cart_item['price'] * cart_item['quantity']
+            )
+            db.session.add(transaction_item)
+            
+            # Update product stock
+            product = Product.query.get(cart_item['id'])
+            if product:
+                product.stock -= cart_item['quantity']
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'transaction_id': transaction['id'],
+            'total': total,
+            'payment': payment_amount,
+            'change': change
+        })
+        
+    except Exception as e:
+        logging.error(f"Checkout error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Terjadi kesalahan sistem'}), 500
+
+@app.route('/receipt/preview/<transaction_id>')
+@require_login
+def receipt_preview(transaction_id):
+    """Show receipt preview"""
+    transaction = Transaction.query.get(transaction_id)
+    if not transaction:
+        flash('Transaksi tidak ditemukan', 'error')
+        return redirect(url_for('pos'))
+    
+    return render_template('receipt_preview.html', 
+                         transaction=transaction, 
+                         format_currency=format_currency)
+
+@app.route('/receipt/pdf/<transaction_id>')
+@require_login
+def receipt_pdf(transaction_id):
+    """Generate and download receipt as PDF"""
+    transaction = Transaction.query.get(transaction_id)
+    if not transaction:
+        flash('Transaksi tidak ditemukan', 'error')
+        return redirect(url_for('pos'))
+    
+    try:
+        receipt_generator = ReceiptGenerator()
+        pdf_path = receipt_generator.generate_pdf(transaction.to_dict())
+        
+        return send_file(pdf_path, 
+                        as_attachment=True, 
+                        download_name=f"receipt_{transaction_id}.pdf",
+                        mimetype='application/pdf')
+    except Exception as e:
+        logging.error(f"PDF generation error: {str(e)}")
+        flash('Gagal membuat PDF', 'error')
+        return redirect(url_for('pos'))
+
+@app.route('/api/transactions')
+@require_login
+def api_transactions():
+    """API endpoint to get transaction history"""
+    transactions = Transaction.query.order_by(Transaction.date.desc()).all()
+    return jsonify([t.to_dict() for t in transactions])
+
+@app.route('/sales-history')
+@require_login
+def sales_history():
+    """Sales history page with analytics"""
+    # Get recent transactions
+    transactions = Transaction.query.order_by(Transaction.date.desc()).limit(50).all()
+    
+    # Calculate total sales today
+    from datetime import date
+    today = date.today()
+    today_sales = db.session.query(func.sum(Transaction.total)).filter(
+        func.date(Transaction.date) == today
+    ).scalar() or 0
+    
+    # Get top selling products
+    top_products = db.session.query(
+        TransactionItem.product_name,
+        func.sum(TransactionItem.quantity).label('total_sold'),
+        func.sum(TransactionItem.subtotal).label('total_revenue')
+    ).group_by(TransactionItem.product_name).order_by(
+        func.sum(TransactionItem.quantity).desc()
+    ).limit(10).all()
+    
+    # Sales data for chart (last 7 days)
+    from datetime import datetime, timedelta
+    sales_data = []
+    for i in range(6, -1, -1):
+        day = today - timedelta(days=i)
+        daily_sales = db.session.query(func.sum(Transaction.total)).filter(
+            func.date(Transaction.date) == day
+        ).scalar() or 0
+        sales_data.append({
+            'date': day.strftime('%d/%m'),
+            'total': daily_sales
+        })
+    
+    return render_template('sales_history.html',
+                         transactions=transactions,
+                         today_sales=today_sales,
+                         top_products=top_products,
+                         sales_data=sales_data,
+                         format_currency=format_currency)
+
+@app.route('/inventory')
+@require_login
+def inventory():
+    """Inventory management page"""
+    products = Product.query.all()
+    low_stock = get_low_stock_products()
+    return render_template('inventory.html', 
+                         products=products, 
+                         format_currency=format_currency,
+                         low_stock=low_stock)
+
+@app.route('/api/products/add', methods=['POST'])
+@require_login
+def add_product():
+    """Add new product"""
+    try:
+        data = request.get_json()
+        name = data.get('name', '').strip()
+        price = int(data.get('price', 0))
+        stock = int(data.get('stock', 0))
+        category = data.get('category', '').strip()
+        
+        if not name or price <= 0 or stock < 0 or not category:
+            return jsonify({'success': False, 'message': 'Data produk tidak valid'}), 400
+        
+        # Check if product name already exists
+        existing_product = Product.query.filter_by(name=name).first()
+        if existing_product:
+            return jsonify({'success': False, 'message': 'Nama produk sudah ada'}), 400
+        
+        new_product = Product(
+            name=name,
+            price=price,
+            stock=stock,
+            category=category
+        )
+        
+        db.session.add(new_product)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Produk {name} berhasil ditambahkan',
+            'product': new_product.to_dict()
+        })
+        
+    except ValueError:
+        return jsonify({'success': False, 'message': 'Format angka tidak valid'}), 400
+    except Exception as e:
+        logging.error(f"Add product error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Terjadi kesalahan sistem'}), 500
+
+@app.route('/api/products/<int:product_id>/stock', methods=['PUT'])
+@require_login
+def update_stock(product_id):
+    """Update product stock"""
+    try:
+        data = request.get_json()
+        action = data.get('action')  # 'set' or 'add'
+        amount = int(data.get('amount', 0))
+        
+        product = Product.query.get(product_id)
+        if not product:
+            return jsonify({'success': False, 'message': 'Produk tidak ditemukan'}), 404
+        
+        if action == 'set':
+            if amount < 0:
+                return jsonify({'success': False, 'message': 'Stok tidak boleh negatif'}), 400
+            product.stock = amount
+        elif action == 'add':
+            new_stock = product.stock + amount
+            if new_stock < 0:
+                return jsonify({'success': False, 'message': 'Stok tidak boleh negatif'}), 400
+            product.stock = new_stock
+        else:
+            return jsonify({'success': False, 'message': 'Aksi tidak valid'}), 400
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Stok {product.name} berhasil diupdate',
+            'new_stock': product.stock
+        })
+        
+    except ValueError:
+        return jsonify({'success': False, 'message': 'Format angka tidak valid'}), 400
+    except Exception as e:
+        logging.error(f"Update stock error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Terjadi kesalahan sistem'}), 500
+
+# Admin routes for user management
+@app.route('/admin/users')
+@require_admin
+def admin_users():
+    """User management page (admin only)"""
+    users = User.query.all()
+    return render_template('admin/users.html', users=users)
+
+@app.route('/admin/users/add', methods=['GET', 'POST'])
+@require_admin
+def admin_add_user():
+    """Add new user (admin only)"""
+    if request.method == 'POST':
+        username = request.form['username'].strip()
+        password = request.form['password']
+        role = request.form['role']
+        
+        # Validation
+        if not username or not password or not role:
+            flash('Semua field harus diisi!', 'error')
+        elif len(username) < 3:
+            flash('Username minimal 3 karakter!', 'error')
+        elif len(password) < 4:
+            flash('Password minimal 4 karakter!', 'error')
+        elif role not in ['admin', 'cashier']:
+            flash('Role tidak valid!', 'error')
+        elif User.query.filter_by(username=username).first():
+            flash('Username sudah digunakan!', 'error')
+        else:
+            new_user = User(
+                username=username,
+                password_hash=generate_password_hash(password),
+                role=role
+            )
+            db.session.add(new_user)
+            db.session.commit()
+            flash(f'User {username} berhasil ditambahkan!', 'success')
+            return redirect(url_for('admin_users'))
+    
+    return render_template('admin/add_user.html')
+
+@app.route('/admin/users/<int:user_id>/edit', methods=['GET', 'POST'])
+@require_admin
+def admin_edit_user(user_id):
+    """Edit user (admin only)"""
+    user = User.query.get_or_404(user_id)
+    
+    if request.method == 'POST':
+        username = request.form['username'].strip()
+        role = request.form['role']
+        is_active = 'is_active' in request.form
+        new_password = request.form.get('new_password', '').strip()
+        
+        # Validation
+        if not username or not role:
+            flash('Username dan role harus diisi!', 'error')
+        elif len(username) < 3:
+            flash('Username minimal 3 karakter!', 'error')
+        elif role not in ['admin', 'cashier']:
+            flash('Role tidak valid!', 'error')
+        elif username != user.username and User.query.filter_by(username=username).first():
+            flash('Username sudah digunakan!', 'error')
+        elif new_password and len(new_password) < 4:
+            flash('Password baru minimal 4 karakter!', 'error')
+        else:
+            user.username = username
+            user.role = role
+            user.is_active = is_active
+            
+            if new_password:
+                user.password_hash = generate_password_hash(new_password)
+            
+            db.session.commit()
+            flash(f'User {username} berhasil diupdate!', 'success')
+            return redirect(url_for('admin_users'))
+    
+    return render_template('admin/edit_user.html', user=user)
+
+@app.route('/admin/users/<int:user_id>/toggle-status', methods=['POST'])
+@require_admin
+def admin_toggle_user_status(user_id):
+    """Toggle user active status (admin only)"""
+    user = User.query.get_or_404(user_id)
+    
+    # Prevent deactivating the current admin user
+    if user.id == session['user_id']:
+        flash('Tidak dapat menonaktifkan akun sendiri!', 'error')
+        return redirect(url_for('admin_users'))
+    
+    user.is_active = not user.is_active
+    db.session.commit()
+    
+    status = 'diaktifkan' if user.is_active else 'dinonaktifkan'
+    flash(f'User {user.username} berhasil {status}!', 'success')
+    return redirect(url_for('admin_users'))
+
+@app.route('/admin/users/<int:user_id>/delete', methods=['POST'])
+@require_admin
+def admin_delete_user(user_id):
+    """Delete user (admin only)"""
+    user = User.query.get_or_404(user_id)
+    
+    # Prevent deleting the current admin user
+    if user.id == session['user_id']:
+        flash('Tidak dapat menghapus akun sendiri!', 'error')
+        return redirect(url_for('admin_users'))
+    
+    username = user.username
+    db.session.delete(user)
+    db.session.commit()
+    flash(f'User {username} berhasil dihapus!', 'success')
+    return redirect(url_for('admin_users'))
+
+# Register template functions
+app.jinja_env.globals.update(format_currency=format_currency)
+
+if __name__ == '__main__':
+    init_database()
+    app.run(host='0.0.0.0', port=5000, debug=True)

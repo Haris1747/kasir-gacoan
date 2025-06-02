@@ -1,0 +1,340 @@
+{% extends "base.html" %}
+
+{% block title %}Riwayat Penjualan - Kasir Gacoan{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h4>
+            <i class="fas fa-chart-line me-2"></i>
+            Dashboard Penjualan
+        </h4>
+    </div>
+</div>
+
+<!-- Sales Summary Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <i class="fas fa-calendar-day fa-2x text-primary mb-2"></i>
+                <h6 class="card-title">Hari Ini</h6>
+                <h5 class="text-primary">{{ format_currency(today_sales) }}</h5>
+                {% if yesterday_sales > 0 %}
+                <small class="text-muted">
+                    {% set change = ((today_sales - yesterday_sales) / yesterday_sales * 100) %}
+                    {% if change > 0 %}
+                    <i class="fas fa-arrow-up text-success"></i> +{{ "%.1f"|format(change) }}%
+                    {% elif change < 0 %}
+                    <i class="fas fa-arrow-down text-danger"></i> {{ "%.1f"|format(change) }}%
+                    {% else %}
+                    <i class="fas fa-minus text-muted"></i> 0%
+                    {% endif %}
+                </small>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <i class="fas fa-calendar-week fa-2x text-success mb-2"></i>
+                <h6 class="card-title">Minggu Ini</h6>
+                <h5 class="text-success">{{ format_currency(week_sales) }}</h5>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <i class="fas fa-calendar-alt fa-2x text-warning mb-2"></i>
+                <h6 class="card-title">Bulan Ini</h6>
+                <h5 class="text-warning">{{ format_currency(month_sales) }}</h5>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <i class="fas fa-receipt fa-2x text-info mb-2"></i>
+                <h6 class="card-title">Total Transaksi</h6>
+                <h5 class="text-info">{{ transactions|length }}</h5>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-line me-2"></i>
+                        Tren Penjualan
+                    </h5>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <input type="radio" class="btn-check" name="chartType" id="daily-chart" value="daily" checked>
+                        <label class="btn btn-outline-primary" for="daily-chart">30 Hari</label>
+                        
+                        <input type="radio" class="btn-check" name="chartType" id="hourly-chart" value="hourly">
+                        <label class="btn btn-outline-primary" for="hourly-chart">Hari Ini</label>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <canvas id="salesChart" height="100"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-pie me-2"></i>
+                    Penjualan per Kategori
+                </h5>
+            </div>
+            <div class="card-body">
+                <canvas id="categoryChart" height="150"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Analytics Section -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-trophy me-2"></i>
+                    Produk Terlaris
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if top_products %}
+                <div class="list-group list-group-flush">
+                    {% for product in top_products[:8] %}
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>{{ product.product_name }}</strong><br>
+                            <small class="text-muted">{{ product.total_quantity }} terjual</small>
+                        </div>
+                        <span class="badge bg-primary rounded-pill">{{ format_currency(product.total_revenue) }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted text-center py-3">Belum ada data penjualan</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-bar me-2"></i>
+                    Performa Kategori
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if category_sales %}
+                <div class="list-group list-group-flush">
+                    {% for category in category_sales %}
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>{{ category.category.title() }}</strong><br>
+                            <small class="text-muted">{{ category.total_quantity }} item terjual</small>
+                        </div>
+                        <span class="badge bg-success rounded-pill">{{ format_currency(category.total_sales) }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted text-center py-3">Belum ada data kategori</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Transactions -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="fas fa-history me-2"></i>
+            Transaksi Terbaru
+        </h5>
+    </div>
+    <div class="card-body">
+        {% if transactions %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>ID Transaksi</th>
+                        <th>Tanggal</th>
+                        <th>Kasir</th>
+                        <th>Total</th>
+                        <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for transaction in transactions %}
+                    <tr>
+                        <td>
+                            <code>{{ transaction.id }}</code>
+                        </td>
+                        <td>{{ transaction.date.strftime('%d/%m/%Y %H:%M') }}</td>
+                        <td>{{ transaction.cashier }}</td>
+                        <td>
+                            <strong>{{ format_currency(transaction.total) }}</strong>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('receipt_preview', transaction_id=transaction.id) }}" 
+                               class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-eye me-1"></i>
+                                Detail
+                            </a>
+                            <a href="{{ url_for('receipt_pdf', transaction_id=transaction.id) }}" 
+                               class="btn btn-sm btn-outline-secondary">
+                                <i class="fas fa-download me-1"></i>
+                                PDF
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <i class="fas fa-receipt fa-3x text-muted mb-3"></i>
+            <h5 class="text-muted">Belum ada transaksi</h5>
+            <p class="text-muted">Transaksi akan muncul di sini setelah checkout pertama</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Sales trend chart
+    const salesCtx = document.getElementById('salesChart').getContext('2d');
+    let salesChart;
+    
+    // Category pie chart
+    const categoryCtx = document.getElementById('categoryChart').getContext('2d');
+    const categoryChart = new Chart(categoryCtx, {
+        type: 'doughnut',
+        data: {
+            labels: [
+                {% for category in category_sales %}
+                '{{ category.category.title() }}'{% if not loop.last %},{% endif %}
+                {% endfor %}
+            ],
+            datasets: [{
+                data: [
+                    {% for category in category_sales %}
+                    {{ category.total_sales }}{% if not loop.last %},{% endif %}
+                    {% endfor %}
+                ],
+                backgroundColor: [
+                    '#0d6efd', '#198754', '#ffc107', '#dc3545', '#6c757d'
+                ],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        padding: 20,
+                        usePointStyle: true
+                    }
+                }
+            }
+        }
+    });
+    
+    // Function to load sales chart data
+    function loadSalesChart(type) {
+        fetch(`/api/sales-chart-data?type=${type}`)
+            .then(response => response.json())
+            .then(data => {
+                if (salesChart) {
+                    salesChart.destroy();
+                }
+                
+                salesChart = new Chart(salesCtx, {
+                    type: 'line',
+                    data: {
+                        labels: data.map(item => item.label),
+                        datasets: [{
+                            label: type === 'daily' ? 'Penjualan Harian' : 'Penjualan per Jam',
+                            data: data.map(item => item.value),
+                            borderColor: '#0d6efd',
+                            backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    callback: function(value) {
+                                        return 'Rp ' + value.toLocaleString('id-ID');
+                                    }
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return 'Rp ' + context.parsed.y.toLocaleString('id-ID');
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            })
+            .catch(error => {
+                console.error('Error loading chart data:', error);
+            });
+    }
+    
+    // Chart type change handlers
+    document.querySelectorAll('input[name="chartType"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            loadSalesChart(this.value);
+        });
+    });
+    
+    // Load initial chart
+    loadSalesChart('daily');
+});
+</script>
+{% endblock %}

@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}Manajemen Pengguna - Kasir Gacoan{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h4>
+            <i class="fas fa-users me-2"></i>
+            Manajemen Pengguna
+        </h4>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addUserModal">
+            <i class="fas fa-user-plus me-2"></i>
+            Tambah Pengguna
+        </button>
+    </div>
+</div>
+
+<!-- Users Table -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">Daftar Pengguna</h5>
+    </div>
+    <div class="card-body">
+        {% if users %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Role</th>
+                        <th>Status</th>
+                        <th>Bergabung</th>
+                        <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td>
+                            <i class="fas fa-user me-2"></i>
+                            {{ user.username }}
+                            {% if user.username == session.username %}
+                            <span class="badge bg-info ms-2">You</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if user.role == 'admin' %}
+                            <span class="badge bg-danger">Admin</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Kasir</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if user.is_active %}
+                            <span class="badge bg-success">Aktif</span>
+                            {% else %}
+                            <span class="badge bg-danger">Nonaktif</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ user.created_at.strftime('%d/%m/%Y') if user.created_at else '-' }}</td>
+                        <td>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <a href="{{ url_for('edit_user', user_id=user.id) }}" class="btn btn-outline-primary">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                {% if user.username != session.username %}
+                                <form method="POST" action="{{ url_for('toggle_user_status', user_id=user.id) }}" style="display: inline;">
+                                    <button type="submit" class="btn btn-sm {% if user.is_active %}btn-outline-warning{% else %}btn-outline-success{% endif %}">
+                                        {% if user.is_active %}
+                                        <i class="fas fa-user-slash"></i>
+                                        {% else %}
+                                        <i class="fas fa-user-check"></i>
+                                        {% endif %}
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <i class="fas fa-users fa-3x text-muted mb-3"></i>
+            <h5 class="text-muted">Belum ada pengguna</h5>
+            <p class="text-muted">Tambahkan pengguna pertama untuk memulai</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Add User Modal -->
+<div class="modal fade" id="addUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-user-plus me-2"></i>
+                    Tambah Pengguna Baru
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('add_user') }}">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Username</label>
+                        <input type="text" class="form-control" id="username" name="username" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Password</label>
+                        <input type="password" class="form-control" id="password" name="password" required minlength="4">
+                        <div class="form-text">Password minimal 4 karakter</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="role" class="form-label">Role</label>
+                        <select class="form-select" id="role" name="role" required>
+                            <option value="">Pilih Role</option>
+                            <option value="cashier">Kasir</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-2"></i>
+                        Simpan
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
